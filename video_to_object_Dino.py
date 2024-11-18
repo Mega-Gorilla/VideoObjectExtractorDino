@@ -2,6 +2,8 @@ import json
 from groundingdino.util.inference import load_model, load_image, predict, annotate
 import cv2,os
 import numpy as np
+import torch
+from torchvision.ops import box_convert
 
 def detect_objects(image_path, text_prompt, box_threshold=0.35, text_threshold=0.25):
     # モデルの読み込み
@@ -38,6 +40,67 @@ def detect_objects(image_path, text_prompt, box_threshold=0.35, text_threshold=0
         })
 
     return annotated_frame, results
+
+
+def detect_subtitles_keep_inside(image_path, text_prompt, box_threshold=0.35, text_threshold=0.25):
+    # モデルの読み込み
+    model = load_model("groundingdino/config/GroundingDINO_SwinT_OGC.py", "weights/groundingdino_swint_ogc.pth")
+    
+    # 画像の読み込み
+    image_source, image = load_image(image_path)
+    
+    # オブジェクト検出の実行
+    boxes, logits, phrases = predict(
+        model=model,
+        image=image,
+        caption=text_prompt,
+        box_threshold=box_threshold,
+        text_threshold=text_threshold
+    )
+    
+    # 画像の高さと幅を取得
+    h, w, _ = image_source.shape
+    
+    # 正規化された座標をピクセル値に変換
+    boxes = boxes * torch.Tensor([w, h, w, h])
+    boxes = box_convert(boxes=boxes, in_fmt="cxcywh", out_fmt="xyxy").numpy()
+    
+    # 画面の下1/3にあるボックスのみをフィルタリング
+    lower_third_threshold = 2 * h / 3
+    filtered_boxes = []
+    filtered_logits = []
+    filtered_phrases = []
+    
+    for box, logit, phrase in zip(boxes, logits, phrases):
+        if box[1] >= lower_third_threshold and box[3] >= lower_third_threshold:  # y1 または y2 が下1/3にある場合
+            filtered_boxes.append(box)
+            filtered_logits.append(logit)
+            filtered_phrases.append(phrase)
+    
+    # 黒い背景画像の作成
+    black_background = np.zeros_like(image_source)
+    
+    # フィルタリングされたボックス内の領域を元の画像から切り取り、黒い背景に貼り付ける
+    for box in filtered_boxes:
+        x1, y1, x2, y2 = map(int, box)
+        black_background[y1:y2, x1:x2] = image_source[y1:y2, x1:x2]
+    
+    # 結果をJSONに変換
+    results = []
+    for box, logit, phrase in zip(filtered_boxes, filtered_logits, filtered_phrases):
+        x1, y1, x2, y2 = box
+        results.append({
+            "label": phrase,
+            "confidence": float(logit),
+            "bbox": {
+                "x1": float(x1),
+                "y1": float(y1),
+                "x2": float(x2),
+                "y2": float(y2)
+            }
+        })
+    
+    return black_background, results
 
 def extract_frames(video_path, output_dir, frame_rate):
     """
@@ -96,7 +159,7 @@ def process_video(video_path, output_dir, text_prompt, frame_rate=1, box_thresho
     # 各フレームに対してオブジェクト検出を実行
     for i, frame_path in enumerate(frame_paths):
         print(f"フレーム {i+1}/{len(frame_paths)} を処理中...")
-        annotated_frame, results = detect_objects(frame_path, text_prompt, box_threshold, text_threshold)
+        annotated_frame, results = detect_subtitles_keep_inside(frame_path, text_prompt, box_threshold, text_threshold)
 
         # 結果の保存
         cv2.imwrite(os.path.join(results_dir, f"annotated_frame_{i:06d}.jpg"), annotated_frame)
@@ -106,12 +169,12 @@ def process_video(video_path, output_dir, text_prompt, frame_rate=1, box_thresho
     print(f"処理が完了しました。結果は {results_dir} に保存されました。")
 
 def main():
-    VIDEO_PATH = "videos/test_video.mp4"
-    OUTPUT_DIR = "outputs/video_detection"
-    TEXT_PROMPT = "texts"
+    VIDEO_PATH = "videos/sample_video.mp4"
+    OUTPUT_DIR = "outputs/video_detection_dino"
+    TEXT_PROMPT = "text"
     FRAME_RATE = 1  # 1フレーム/秒で処理
-    BOX_THRESHOLD = 0.35
-    TEXT_THRESHOLD = 0.25
+    BOX_THRESHOLD = 0.30
+    TEXT_THRESHOLD = 0.20
 
     process_video(VIDEO_PATH, OUTPUT_DIR, TEXT_PROMPT, FRAME_RATE, BOX_THRESHOLD, TEXT_THRESHOLD)
 
