@@ -147,3 +147,6 @@ grounding/version.py
 
 vis/
 tmp/
+
+# weight
+weight/

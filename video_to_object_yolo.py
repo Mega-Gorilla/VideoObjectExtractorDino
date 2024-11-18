@@ -84,7 +84,7 @@ def process_video(video_path, output_dir, model_path, frame_rate=1, conf_thresho
 def main():
     VIDEO_PATH = "videos/sample_video.mp4"
     OUTPUT_DIR = "outputs/video_detection_yolo"
-    MODEL_PATH = "yolov8n.pt"  # または他のYOLOv8モデルのパス
+    MODEL_PATH = "weights/yolov8n.pt"  # または他のYOLOv8モデルのパス
     FRAME_RATE = 1  # 1フレーム/秒で処理
     CONF_THRESHOLD = 0.25
     
