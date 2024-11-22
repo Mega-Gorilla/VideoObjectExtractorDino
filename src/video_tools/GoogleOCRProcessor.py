@@ -145,6 +145,18 @@ class GoogleOCRProcessor:
         return results
 
     def save_results(self, results: Dict[str, Dict], output_path: str) -> None:
+        # 出力ディレクトリのパスを取得
+        output_dir = os.path.dirname(output_path)
+        
+        # ディレクトリが存在しない場合は作成
+        if output_dir and not os.path.exists(output_dir):
+            os.makedirs(output_dir)
+        
+        # 出力パスがディレクトリの場合はエラーを発生
+        if os.path.isdir(output_path):
+            raise ValueError(f"Output path '{output_path}' is a directory. Please specify a file path.")
+        
+        # 結果を保存
         with open(output_path, 'w', encoding='utf-8') as f:
             json.dump(results, f, ensure_ascii=False, indent=2)
 
@@ -164,23 +176,31 @@ class GoogleOCRProcessor:
         for filename, result in tqdm(ocr_results.items(), desc="Generating SRT"):
             start_time, end_time = self._parse_timestamp_from_filename(filename)
             if start_time and end_time and result["text_blocks"]:
-                # 日本語文字の場合はスペースを削除、英数字の場合はスペースを保持
-                texts = []
-                for block in result["text_blocks"]:
-                    text = block["text"]
-                    if any('\u4e00' <= c <= '\u9fff' or '\u3040' <= c <= '\u309f' or '\u30a0' <= c <= '\u30ff' for c in text):
-                        text = text.replace(" ", "")
-                    texts.append(text)
+                # スペースを除去して結合
+                texts = [block["text"].strip() for block in result["text_blocks"]]
+                combined_text = "".join(texts)
                 
-                combined_text = " ".join(texts)
                 entry = SubtitleEntry(
                     index=index,
                     start_time=start_time,
                     end_time=end_time,
-                    text=combined_text.strip()
+                    text=combined_text
                 )
                 subtitle_entries.append(entry)
                 index += 1
+
+        # タイムスタンプでソート
+        subtitle_entries.sort(key=lambda x: datetime.strptime(x.start_time, '%H:%M:%S,%f'))
+        
+        # インデックスを振り直し
+        for i, entry in enumerate(subtitle_entries, 1):
+            entry.index = i
+
+        with open(output_path, 'w', encoding='utf-8') as f:
+            for entry in tqdm(subtitle_entries, desc="Writing SRT file"):
+                f.write(f"{entry.index}\n")
+                f.write(f"{entry.start_time} --> {entry.end_time}\n")
+                f.write(f"{entry.text}\n\n")
 
 if __name__ == '__main__':
     processor = GoogleOCRProcessor('Your API KEY', use_api_key=True)
