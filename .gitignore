@@ -149,4 +149,7 @@ vis/
 tmp/
 
 # weight
-weight/
+weights/
+
+#video
+videos/
