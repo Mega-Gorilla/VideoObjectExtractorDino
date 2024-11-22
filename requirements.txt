@@ -9,3 +9,10 @@ opencv-python
 supervision>=0.22.0
 pycocotools
 ultralytics
+
+jaconv
+loguru
+fugashi
+unidic-lite
+
+google-cloud-vision
